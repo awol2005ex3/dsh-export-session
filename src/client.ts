@@ -1,9 +1,12 @@
 /**
  * Web 客户端半：在会话页注入"导出会话"浮动按钮。
  *
- * 这是「尽力而为」版：扫描页面上已渲染的消息 DOM（`[data-chat-flow-kind]`），
- * 把可见内容拼成 Markdown 下载；另提供"打印为 PDF"（浏览器打印对话框 →
- * 另存为 PDF）。局限：只能导出页面已渲染的可见消息，长会话需先滚动加载。
+ * 提供三种格式（均「尽力而为」，扫描页面已渲染的消息 DOM `[data-chat-flow-kind]`）：
+ *   - 导出 Markdown：页面文本直接拼成 .md 下载；
+ *   - 导出 Word：经 CDN 注入 docx 库把页面文本渲染成 .docx 下载（与参考项目注入
+ *     SheetJS 同模式，client 模块不允许 import 任何包）；
+ *   - 导出 PDF：打开打印窗口，借浏览器「另存为 PDF」。
+ * 局限：只能导出页面已渲染的可见消息，长会话需先滚动加载。
  *
  * 本文件是纯浏览器逻辑，**不得** import 任何 node 依赖（export.ts / collect.ts
  * 用到 `node:fs`），否则会被打进 web bundle 导致运行期报错。
@@ -73,9 +76,8 @@ function buildMarkdown(): string {
   return parts.join('\n')
 }
 
-/** 触发浏览器下载一段文本。 */
-function downloadText(filename: string, content: string, mime: string): void {
-  const blob = new Blob([content], { type: mime })
+/** 触发浏览器下载一个 Blob。 */
+function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
@@ -84,6 +86,11 @@ function downloadText(filename: string, content: string, mime: string): void {
   anchor.click()
   anchor.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** 触发浏览器下载一段文本。 */
+function downloadText(filename: string, content: string, mime: string): void {
+  downloadBlob(filename, new Blob([content], { type: mime }))
 }
 
 /** 打开新窗口渲染 HTML 并调用打印（→ 另存为 PDF）。 */
@@ -129,6 +136,76 @@ function buildPrintHtml(): string {
 </style></head><body><h1>会话导出</h1>${body}</body></html>`
 }
 
+/** docx 库（IIFE 构建）经 CDN 注入；浏览器半生成 .docx 复用，与参考注入 SheetJS 同模式。 */
+const DOCX_CDN = 'https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.iife.js'
+
+let docxPromise: Promise<unknown> | undefined
+
+/** 加载 docx 全局对象（带缓存与 CDN 失败提示）。 */
+function loadDocx(): Promise<any> {
+  const w = window as unknown as { docx?: any }
+  if (w.docx !== undefined) return Promise.resolve(w.docx)
+  if (docxPromise !== undefined) return docxPromise
+  docxPromise = new Promise<any>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = DOCX_CDN
+    script.onload = () => {
+      if (w.docx !== undefined) resolve(w.docx)
+      else reject(new Error('docx 库已加载但未暴露全局对象'))
+    }
+    script.onerror = () => reject(new Error('无法从 CDN 加载 docx 库，请检查网络后重试'))
+    document.head.appendChild(script)
+  })
+  return docxPromise
+}
+
+/** 把一段 Markdown 文本（含 ### 用户 等小标题）转为 docx 段落数组（轻量解析）。 */
+function markdownToDocxParagraphs(markdown: string): any[] {
+  const DX = (window as unknown as { docx: any }).docx
+  const out: any[] = []
+  const lines = markdown.split('\n')
+  let inCode = false
+  let codeBuffer: string[] = []
+  const flushCode = (): void => {
+    for (const line of codeBuffer) {
+      out.push(new DX.Paragraph({ children: [new DX.TextRun({ text: line, font: 'Consolas' })] }))
+    }
+    codeBuffer = []
+  }
+  for (const raw of lines) {
+    const line = raw.replace(/\r$/, '')
+    if (line.trim().startsWith('```')) {
+      if (inCode) { inCode = false; flushCode() }
+      else { inCode = true; codeBuffer = [] }
+      continue
+    }
+    if (inCode) { codeBuffer.push(line); continue }
+    if (line.trim() === '') continue
+    if (line.startsWith('### ')) out.push(new DX.Paragraph({ heading: DX.HeadingLevel.HEADING_3, children: [new DX.TextRun(line.slice(4))] }))
+    else if (line.startsWith('## ')) out.push(new DX.Paragraph({ heading: DX.HeadingLevel.HEADING_2, children: [new DX.TextRun(line.slice(3))] }))
+    else if (line.startsWith('# ')) out.push(new DX.Paragraph({ heading: DX.HeadingLevel.HEADING_1, children: [new DX.TextRun(line.slice(2))] }))
+    else if (line.startsWith('> ')) out.push(new DX.Paragraph({ children: [new DX.TextRun({ text: line.slice(2), italics: true })] }))
+    else if (/^[-*]\s+/.test(line)) out.push(new DX.Paragraph({ children: [new DX.TextRun('• ' + line.replace(/^[-*]\s+/, ''))] }))
+    else out.push(new DX.Paragraph({ children: [new DX.TextRun(line)] }))
+  }
+  flushCode()
+  return out
+}
+
+/** 扫描会话 DOM，生成 .docx 并触发下载。 */
+async function exportDocx(): Promise<void> {
+  try {
+    const DX = await loadDocx()
+    const doc = new DX.Document({ sections: [{ children: markdownToDocxParagraphs(buildMarkdown()) }] })
+    const blob: Blob = await DX.Packer.toBlob(doc)
+    downloadBlob(`session-${Date.now()}.docx`, blob)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[dsh-session-export]', err)
+    window.alert(`导出 Word 失败：${message}`)
+  }
+}
+
 /** 注入浮动工具条（幂等）。 */
 function ensureBar(): void {
   if (document.getElementById(BAR_ID) !== null) return
@@ -166,6 +243,9 @@ function ensureBar(): void {
 
   bar.appendChild(mkButton('导出 Markdown', () => {
     downloadText(`session-${Date.now()}.md`, buildMarkdown(), 'text/markdown;charset=utf-8')
+  }))
+  bar.appendChild(mkButton('导出 Word', () => {
+    void exportDocx()
   }))
   bar.appendChild(mkButton('导出 PDF', () => {
     printHtml(buildPrintHtml())

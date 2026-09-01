@@ -27,7 +27,7 @@ npx @deepseek-ai/dsh plugin --profile web add .
 
 安装后效果：
 
-- **浏览器半**：dsh Web 对话页右下角出现「导出 Markdown / 导出 PDF」浮动工具条。
+- **浏览器半**：dsh Web 对话页右下角出现「导出 Markdown / 导出 Word / 导出 PDF」浮动工具条。
 - **Node 半**：对话中让模型调用 `export_session` 工具导出文件。
 
 > 注意：插件集合的变更在宿主重启后生效（客户端模块系统按名缓存包元数据）；
@@ -63,6 +63,7 @@ patch 是按 `id` 整体替换 `config`（非深合并），overlay 需写全字
 会话页右下角的工具条提供：
 
 - **导出 Markdown**：把当前已渲染的消息区内容拼成 Markdown，触发浏览器下载。
+- **导出 Word**：经 CDN 动态注入 `docx` 库（jsdelivr），把页面文本渲染成 `.docx` 下载。
 - **导出 PDF**：调用 `window.print()` 走浏览器「另存为 PDF」对话框。
 
 > 适用：快速保存肉眼可见的对话。长会话需先滚动加载全部消息，否则只导出已渲染部分。
@@ -143,7 +144,9 @@ dsh-session-export/
 - PDF 依赖本机中文字体文件；纯服务器/容器环境若探测不到，请设
   `DSH_EXPORT_PDF_FONT` 指到某 `.ttf/.ttc/.otf`。
 - Node 半的 `docx` / `pdfkit` / `fontkit` 经 npm 安装；浏览器半导出不含这些依赖
-  （Markdown 走 Blob 下载，PDF 走 `window.print()`）。
+  （Markdown 走 Blob 下载，PDF 走 `window.print()`）。浏览器半的 **Word 导出**例外：
+  经 CDN 动态注入 `docx` 库（jsdelivr `docx@9.7.1/dist/index.iife.js`）生成 `.docx`，
+  首次点击需联网拉取该库（约 1.1MB，失败会弹窗提示检查网络）。
 - 客户端模块系统要求较新的 deepseek-harness 版本（存在 `ctx.clientModules` 服务
   与 `dsh.client` 包声明扫描）。
 

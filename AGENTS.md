@@ -13,7 +13,7 @@ Markdown / Word(.docx) / PDF。对标 `dsh-md-table-export`，但对象是整段
 | 半 | 文件 | 形态 | 作用 |
 | --- | --- | --- | --- |
 | Node 半 | `src/index.ts` → `lib/index.js` | Cordis 插件（bundle patch） | 注册 `export_session` 工具，从 `exec.agent.session` 取数落盘 |
-| 浏览器半 | `src/client.ts` → `lib/client.js` | dsh Web 客户端模块（`dsh.client.platform: "web"`） | 会话页右下角浮动工具条：导出 Markdown / 打印 PDF |
+| 浏览器半 | `src/client.ts` → `lib/client.js` | dsh Web 客户端模块（`dsh.client.platform: "web"`） | 会话页右下角浮动工具条：导出 Markdown / Word / PDF（均为扫描 DOM 的「尽力而为」版） |
 
 ## 2. 数据流（必读）
 
@@ -52,7 +52,7 @@ Transcript { meta, entries[] }    (src/collect.ts)
 | `export.ts` | 统一调度落盘 | `exportSession(args, ctx)`, `resolveOutputDir(dir, fallback)`, `sanitizeFileName(name)`, `formatTimestamp(ms)` |
 | `tool.ts` | `defineTool` 注册 `export_session` | `exportSessionTool` |
 | `index.ts` | 插件四导出规范 | `name`, `inject`, `Config`（schemastery `Schema.object`）, `apply(ctx, config)` |
-| `client.ts` | 浏览器半模块体（`apply(ctx, config?)` 供 shell 物化） | `apply` |
+| `client.ts` | 浏览器半模块体（`apply(ctx, config?)` 供 shell 物化）。扫描 `[data-chat-flow-kind]` DOM 注入浮动按钮：Markdown（Blob 下载）/ Word（CDN 注入 docx 库渲染）/ PDF（`window.print()`） | `apply`、`loadDocx`、`markdownToDocxParagraphs`、`exportDocx` |
 
 ## 4. 硬编码契约（改前必看）
 
@@ -100,6 +100,10 @@ npm run build       # tsc + scripts/wrap-client.mjs；构建后 node --check lib
    `export function apply`，tsc 生成的具名 `export` 会使整段脚本（含首行的 `__ModuleLoader__.load`）
    语法错误、工厂永不注册，宿主报 `loaded without registering "<pkg>"`。正确写法：`apply`
    为普通函数声明 + 文件末尾 `module.exports = { name, inject, apply }`，交给 `wrap-client.mjs` 包外壳。
+8. **浏览器半生成 .docx 走 CDN 注入 `docx` 库**（IIFE 全局 `window.docx`，见 `loadDocx()`），
+   与参考项目注入 SheetJS 同模式——client 模块不能 import 任何包。`DOCX_CDN` 锁定
+   `docx@9.7.1/dist/index.iife.js`：docx 9 的 IIFE 全局名即 `docx`，`Packer.toBlob()` 在浏览器
+   返回 Blob。务必在 `loadDocx().catch()` 里 `alert` 提示网络失败，不要静默吞错。
 
 ## 8. 如何扩展
 
