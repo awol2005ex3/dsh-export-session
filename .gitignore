@@ -1,0 +1,9 @@
+node_modules/
+lib/
+samples/
+*.log
+.DS_Store
+.workbuddy
+.opencode
+.trae
+.soloncode
