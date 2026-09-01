@@ -88,13 +88,18 @@ npm run build       # tsc + scripts/wrap-client.mjs；构建后 node --check lib
    `family` 取名（如 `'Microsoft YaHei'`），否则全字重塌成一种。探测逻辑见 `fonts.ts`，
    可用 `DSH_EXPORT_PDF_FONT`（路径或 `名@路径`）强制覆盖。
 2. **`render-pdf.ts` 的 `drawRow` 里 `minCell` 必须在使用前声明**（曾触发 TDZ 运行时错误）。
-3. **构建后必须跑 `wrap-client.mjs`**：tsc 会给 `client.js` 追加 `export {}`，
-   破坏闭包工厂外壳，浏览器半加载即崩。
+3. **构建后必须跑 `wrap-client.mjs`**：它把 `lib/client.js` 包成惰性 CJS 闭包工厂外壳
+   （`window.__ModuleLoader__.load({ id, factory })`）。`src/client.ts` 必须零 import/export，
+   否则 tsc 生成的具名 `export` 会让经典脚本语法错误、整段不执行（见第 7 条）。
 4. **`deriveMessages()` vs 原始 `events`**：只用 `deriveMessages()` 会丢时间戳与工具名，
    必须回查 `events` 按 `message.id` 补；`source.kind === 'plugin'` 是注入噪音，默认排除。
 5. **patch `config` 整块替换**：overlay 需写全 `defaultOutputDir` + `defaultFormat` 两字段，
    不能只写其中一个（否则另一项被清掉）。
 6. **`export_session` 工具参数 `format` 必填**；缺省格式来自 `Config.defaultFormat`，非工具参数。
+7. **`src/client.ts` 必须零 `import`/`export`**：浏览器半被当作经典脚本加载。若源文件写
+   `export function apply`，tsc 生成的具名 `export` 会使整段脚本（含首行的 `__ModuleLoader__.load`）
+   语法错误、工厂永不注册，宿主报 `loaded without registering "<pkg>"`。正确写法：`apply`
+   为普通函数声明 + 文件末尾 `module.exports = { name, inject, apply }`，交给 `wrap-client.mjs` 包外壳。
 
 ## 8. 如何扩展
 

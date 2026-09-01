@@ -8,8 +8,9 @@
  * 本文件是纯浏览器逻辑，**不得** import 任何 node 依赖（export.ts / collect.ts
  * 用到 `node:fs`），否则会被打进 web bundle 导致运行期报错。
  *
- * 入口遵循 dsh client 模块约定：`export function apply(ctx, config?)`，与 host
- * 侧 index.ts 同名导出一致，宿主以 cordis 插件对象方式加载。
+ * 入口遵循 dsh client 模块约定：本文件**刻意不含任何 import/export 语句**，
+ * `apply` 为普通函数声明；末尾用 `module.exports = { name, inject, apply }` 导出，
+ * 与 host 侧 index.ts 同名函数语义一致，宿主以 cordis 插件对象方式加载。
  *
  * @module dsh-session-export/client
  */
@@ -177,7 +178,7 @@ function ensureBar(): void {
  * client 模块入口。会话 DOM 可能尚未渲染，用 MutationObserver 在它出现后
  * 注入工具条；同时立即尝试一次（处理已加载完成的页面）。
  */
-export function apply(): void {
+function apply(): void {
   if (typeof document === 'undefined') return
   ensureBar()
   if (document.querySelector(CONTAINER_SELECTOR) !== null) return
@@ -190,3 +191,7 @@ export function apply(): void {
   })
   observer.observe(document.body, { childList: true, subtree: true })
 }
+
+// 工厂返回值即插件模块表：loader 从中读取 name / inject / apply 组装 fiber。
+// 注意：本文件刻意不含 import/export（否则 tsc 会生成具名 export，使经典脚本语法错误）。
+module.exports = { name: 'dsh-session-export', inject: [], apply }
