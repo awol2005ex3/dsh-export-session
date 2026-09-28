@@ -129,8 +129,9 @@ dsh-session-export/
 
 ## 六、实现要点
 
-- 数据来自 `exec.agent.session`：`deriveMessages()` 拿到折叠后的正确消息序列，
-  原始 `events` 仅用于补全时间戳与工具名（见 `packages/core/session`、`packages/llm`）。
+- 数据来自 `exec.agent.session`：`deriveMessages()` 拿到折叠后的正确消息序列（0.1.7+ 里
+  工具结果是 `role: 'tool'` 的一等消息），`snapshotEvents()`（0.0.x 回退 `events`）仅用于
+  补全时间戳、中断标记与工具名（见 `packages/core/session`、`packages/llm`）。
 - PDF 必须嵌入本机中文字体（`pdfkit` 内置字体无中文）。`src/fonts.ts` 自动探测
   Windows / macOS / Linux 的中文字体；也可用环境变量 `DSH_EXPORT_PDF_FONT`
   强制指定（值为字体文件路径或 `字体名@字体路径`）。
@@ -149,6 +150,10 @@ dsh-session-export/
   首次点击需联网拉取该库（约 1.1MB，失败会弹窗提示检查网络）。
 - 客户端模块系统要求较新的 deepseek-harness 版本（存在 `ctx.clientModules` 服务
   与 `dsh.client` 包声明扫描）。
+- Node 半按 deepseek-harness **0.1.7-rc.2** 的消息模型实现：工具结果是 `role: 'tool'`
+  的一等消息、`source.kind` 由各生产者自行声明、事件日志经 `snapshotEvents()` 读取
+  （0.0.x 的 `events` getter 仍作为回退读法保留）。更老的 harness 不受支持：旧式
+  `tool-result` 内容块只会被展开为文本，不再识别为工具结果条目。
 
 ## 八、质量门
 

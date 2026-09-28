@@ -22,9 +22,11 @@ function fakeSession(): Session {
       },
       {
         id: 't1',
-        role: 'user',
-        content: [{ type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: '结果是 2' }], isError: false }],
-        source: { kind: 'tool' },
+        role: 'tool',
+        content: [{ type: 'text', text: '结果是 2' }],
+        source: { kind: 'tool', callId: 'c1' },
+        toolCallId: 'c1',
+        isError: false,
       },
     ] as unknown as Message[]),
   } as unknown as Session
